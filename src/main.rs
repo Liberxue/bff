@@ -2,6 +2,7 @@ extern crate serde_json;
 extern crate hyper;
 pub mod cars;
 pub mod handler;
+pub mod middleware;
 use std::net::SocketAddr;
 use hyper::server::conn::Http;
 use hyper::service::service_fn;
@@ -24,6 +25,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     error!("this's error log");
     debug!("this's debug log");
     trace!("this's trace log");
+   let result =  middleware::source("http://127.0.0.1:8000/","http://qq.com").await;
+
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     let listener = TcpListener::bind(addr).await?;
 
