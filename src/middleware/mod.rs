@@ -1,10 +1,10 @@
 
-use hyper::{Client, Request, Uri, body::HttpBody};
+use hyper::{Client, Request, Uri};
 use hyper::client::HttpConnector;
+use futures::{TryFutureExt, TryStreamExt};
 use hyper_proxy::{Proxy, ProxyConnector, Intercept};
 use headers::Authorization;
 use std::error::Error;
-use tokio::io::{stdout, AsyncWriteExt as _};
 
 pub async fn source(source:&str,target:&str) -> Result<(), Box<dyn Error>> {
     let proxy = {
@@ -27,19 +27,18 @@ pub async fn source(source:&str,target:&str) -> Result<(), Box<dyn Error>> {
     }
 
     let client = Client::builder().build(proxy);
-    let mut resp = client.request(req).await?;
-    println!("Response: {}", resp.status());
-    while let Some(chunk) = resp.body_mut().data().await {
-        stdout().write_all(&chunk?).await?;
-    }
+    let fut_http = client.request(req)
+        .and_then(|res| res.into_body().map_ok(|x|x.to_vec()).try_concat())
+        .map_ok(move |body| ::std::str::from_utf8(&body).unwrap().to_string());
 
-    // // Connecting to an https uri is straightforward (uses 'CONNECT' method underneath)
-    // let uri = target.parse().unwrap();
-    // let mut resp = client.get(uri).await?;
-    // println!("Response: {}", resp.status());
-    // while let Some(chunk) = resp.body_mut().data().await {
-    //     stdout().write_all(&chunk?).await?;
-    // }
+    // Connecting to an https uri is straightforward (uses 'CONNECT' method underneath)
+    let uri = target.parse().unwrap();
+    let fut_https = client.get(uri)
+        .and_then(|res| res.into_body().map_ok(|x|x.to_vec()).try_concat())
+        .map_ok(move |body| ::std::str::from_utf8(&body).unwrap().to_string());
+
+    let (http_res, https_res) = futures::future::join(fut_http, fut_https).await;
+    let (_, _) = (http_res?, https_res?);
     Ok(())
 }
 
